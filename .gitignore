@@ -1,0 +1,11 @@
+# Ignore data and model files
+data/
+models/
+*.tif
+*.nc
+*.csv
+*.ipynb_checkpoints
+__pycache__/
+*.pyc
+.env
+
