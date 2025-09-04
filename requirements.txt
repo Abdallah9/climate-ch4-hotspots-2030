@@ -1,0 +1,10 @@
+xarray
+netCDF4
+pandas
+numpy
+matplotlib
+scikit-learn
+seaborn
+rasterio
+geopandas
+
