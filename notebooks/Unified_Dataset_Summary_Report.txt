@@ -1,0 +1,29 @@
+UNIFIED CLIMATE DATASET SUMMARY REPORT
+==================================================
+
+Creation Date: 2025-09-23 15:50:06
+Validation Score: 92.1% (Policy-Ready)
+
+DATASET STRUCTURE:
+- Total Records: 1,921,740
+- Unique Pixels: 128,116
+- Time Period: 2010-2024
+- Variables: 8
+
+VARIABLES INCLUDED:
+ 1. ch4_concentration
+ 2. ch4_emissions
+ 3. elevation
+ 4. land_cover_class
+ 5. permafrost_fraction
+ 6. precipitation
+ 7. soil_moisture
+ 8. temperature
+
+SPATIAL COVERAGE:
+- Latitude: -141.00° to -52.50°N
+- Longitude: 42.00° to 56.40°W
+
+DATA QUALITY:
+- Completeness: 100.00%
+- Missing Values: 54

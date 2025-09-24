@@ -226,8 +226,6 @@ Every source file is in **NetCDF (`.nc`)** format.
 
 ---
 
-
-
 # **Data Harmonization and Preprocessing**
 
 This step ensured that all raw datasets, obtained from multiple sources (Copernicus, ESA CCI, EDGAR, etc.), were standardized into a **uniform spatiotemporal framework** before being fed into the modeling pipeline.
@@ -289,7 +287,6 @@ After raw preprocessing, all datasets were standardized to meet the **benchmark 
   ```
   pixel_id, latitude, longitude, year, <feature_value>
   ```
-
   Example: `CH4_Concentration_2010-2024.csv`
 
 ---
@@ -309,14 +306,143 @@ Features include:
 * Industrial CH₄ emissions (`ch4_emissions`)
 * Land cover (`land_cover_class`)
 * Elevation (`elevation`)
+
+  
 ---
 
+## **Key Code Development**
+
+After successfully preprocessing some of the Downloaded data using the folowing script,
+Ch4_raw_process.ipynb
+Fuel_Exploitation_emi_raw_ process.ipynb
+land_cover_raw_ process.ipynb
+permafrost_raw_ process.ipynb
+wetland_raw_process.ipynb,
 
 
+the obtained data was fed to era5_processor.py and climate_processor.py modules.
 
 
+### **Reusable Modules**
 
-### **Output Files:**
+* `era5_processor.py` – 
+* `climate_processor.py` – 
+---
+
+### **Main Functions**
+
+```python
+# Generic (works for ERA5 + non-ERA5 NetCDFs)
+process_climate_timeseries(
+    file_path: str,
+    variable_name: str,
+    output_name: str,
+    unit_conversion=None,     
+    description: str = ""
+) -> pd.DataFrame
+```
+
+
+```python
+# ERA5 convenience variant, same interface, adds ERA5-specific time/coord fixes
+process_era5_timeseries(
+    file_path: str,
+    variable_name: str,
+    output_name: str,
+    unit_conversion=None,
+    description: str = ""
+) -> pd.DataFrame
+```
+
+* Loads a NetCDF, converts longitudes (0–360 → -180–180), **clips to Canada**,
+* **aggregates to annual** (mean or sum—see `agg` below),
+* **resamples to 0.1°**, flattens to ML-ready long table,
+* filters years **2010–2024**, saves `*feature_Name_2010-2024.csv`.
+
+
+---
+
+### **Convenience Functions (wrappers used)**
+
+```python
+# ERA5
+process_temperature(file_path)          # t2m → temperature (K→°C, annual mean)
+process_precipitation(file_path)        # tp  → precipitation (m→mm, annual sum)
+process_soil_moisture(file_path)        # swvl1 → soil_moisture (fraction, annual mean)
+
+# Non-ERA5 / other sources
+process_ch4_concentration(file_path)    # tc_ch4 → ch4_concentration (ppm or fraction→ppm)
+process_permafrost(file_path)           # PFR → permafrost_fraction (annual; AR(2) for 2022–2024 if needed)
+process_wetlands(file_path)             # inund_sat_wetland_frac → wetland_fraction (%), monthly→annual + AR(2)
+process_land_cover(file_path)           # dom_land_cover_class (static, replicate 2010–2024)
+process_elevation(file_path)            # z (geopotential) → elevation (m), static, replicate 2010–2024
+process_industrial_emissions(file_path) # fuel_emi/emissions → ch4_emissions (annual; AR(2) for 2023–2024)
+```
+
+Each wrapper:
+
+* Passes the correct `variable_name`/`output_name`
+* Chooses **aggregation** (mean vs sum)
+* Supplies the **unit conversion** (if any)
+* Applies the **year filter (2010–2024)**
+
+---
+
+### **Unit Conversions (used in wrappers)**
+
+```python
+kelvin_to_celsius(temp_k)          # K → °C
+meters_to_millimeters(precip_m)    # m → mm
+geopotential_to_elevation(geo)     # m²/s² → m  (geo / 9.80665)
+fraction_to_percent(x)             # 0–1 → 0–100 (wetlands)
+```
+
+---
+
+### **Common Utilities**
+
+```python
+# 1) Coordinate normalization
+fix_longitudes_to_west(lon)  # (lon + 180) % 360 - 180
+
+# 2) Spatial subsetting to Canada (benchmark)
+CANADA_BOUNDS = dict(lat_min=40.0, lat_max=85.0, lon_min=-145.0, lon_max=-50.0)
+subset_canada(ds, bounds=CANADA_BOUNDS)
+
+# 3) Temporal aggregation
+annual_aggregate(da, mode="mean")  # "mean" for t2m/swvl1/wetland/conc; "sum" for tp
+
+# 4) Regrid to benchmark grid
+TARGET_GRID = (np.arange(40.0, 85.1, 0.1), np.arange(-145.0, -49.9, 0.1))
+regrid_to_0p1(da, method="linear")     # continuous fields
+regrid_to_0p1_nearest(da)              # categorical (land cover)
+
+# 5) Year filter
+filter_years(da_or_df, start=2010, end=2024)
+
+# 6) Flatten to ML long table (consistent schema)
+to_long_dataframe(da, var_name)  # -> ['pixel_id','longitude','latitude','year', var_name]
+
+# 7) IO helpers
+save_csv(df, out_name)
+save_netcdf(da, out_nc)
+```
+
+---
+
+### **Usage Examples:**
+```python
+from era5_processor import process_temperature, process_precipitation
+
+temp_df = process_temperature('data_stream-oper_stepType-instant.nc')
+precip_df = process_precipitation('data_stream-oper_stepType-accum.nc')
+```
+---
+ 
+### **Output Naming (consistent across features)**
+* **CSV**: `{OutputName}_2010-2024.csv`
+  
+  ### **Output Files:**
 - `Ch4_Concentration_2010–2024.csv`   
 - `Ch4_Emissions_2010–2024.csv`       
 - `Elevation_2010–2024.csv`           
@@ -326,158 +452,54 @@ Features include:
 - `Soil_Moisture_2010–2024.csv`       
 - `Temperature_2010–2024.csv`         
 - `Wetland_Fraction_2010–2024.csv`    
----
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ---
 
-## **Key Code Development**
+# **Data Unification**
 
-After successfully preprocessing some of the Downloaded data, using the folowing script,
-Ch4_raw_process.ipynb
-Fuel_Exploitation_emi_raw_ process.ipynb
-land_cover_raw_ process.ipynb
-permafrost_raw_ process.ipynb
-wetland_raw_process.ipynb,
+## **🎯 Goal**
 
+The objective of the unification step was to merge all processed climate features into a single dataset covering **2010–2024**, standardized to:
 
-the obtained data was fed to era5_processor.py and climate_processor.py modules.
+* **Resolution:** 0.1° × 0.1° (\~10 km)
+* **Projection:** EPSG:4326 (WGS84)
+* **Temporal:** Annual means
+* **Spatial:** Canada boundaries
+* **Format:** ML-ready tabular CSV
 
+This unified dataset would serve as the foundation for machine learning models predicting CH₄ emission hotspots.
 
-### **Reusable Modules**
-
-* `era5_processor.py` – 
-* `climate_processor.py` – 
 ---
 
-### **Main Functions**
+## **🛠 What Was Tried**
 
-```python
-# Generic (works for ERA5 + non-ERA5 NetCDFs)
-process_climate_timeseries(
-    file_path: str,
-    variable_name: str,
-    output_name: str,
-    unit_conversion=None,     
-    description: str = ""
-) -> pd.DataFrame
-```
+To guarantee alignment across all features, I first attempted to compute the **strict spatial and temporal intersection**:
 
+1. Loaded each feature (`ch4_concentration`, `emissions`, `temperature`, `precipitation`, `soil_moisture`, `elevation`, `land_cover`, `permafrost_fraction`, `wetland_fraction`).
+2. Identified the set of unique `(pixel_id, year)` pairs in each dataset.
+3. Calculated the **intersection** across all features (i.e., only pixels present everywhere).
 
-```python
-# ERA5 convenience variant, same interface, adds ERA5-specific time/coord fixes
-process_era5_timeseries(
-    file_path: str,
-    variable_name: str,
-    output_name: str,
-    unit_conversion=None,
-    description: str = ""
-) -> pd.DataFrame
-```
+This approach was designed to ensure a dataset with **no missing values**.
 
-* Loads a NetCDF, converts longitudes (0–360 → -180–180), **clips to Canada**,
-* **aggregates to annual** (mean or sum—see `agg` below),
-* **resamples to 0.1°**, flattens to ML-ready long table,
-* filters years **2010–2024**, saves `*feature_Name_2010-2024.csv`.
+---
+
+## **⚠️ What Happened**
+
+The strict intersection revealed a critical limitation:
+
+* **CH₄ concentration:** \~358k unique pixels
+* **ERA5-based features (temperature, precipitation, soil moisture):** \~428k pixels
+* **Wetlands:** only \~6,415 unique pixels
+
+When intersected, the dataset shrank to **6,415 pixels**, or less than **2% of ERA5 coverage**.
+
+This meant that the wetlands dataset—being spatially limited—acted as the bottleneck, forcing a drastic reduction in usable data for national-scale modeling.
 
 
 ---
 
-### **Convenience Functions (wrappers used)**
-
-```python
-# ERA5
-process_temperature(file_path)          # t2m → temperature (K→°C, annual mean)
-process_precipitation(file_path)        # tp  → precipitation (m→mm, annual sum)
-process_soil_moisture(file_path)        # swvl1 → soil_moisture (fraction, annual mean)
-
-# Non-ERA5 / other sources
-process_ch4_concentration(file_path)    # tc_ch4 → ch4_concentration (ppm or fraction→ppm)
-process_permafrost(file_path)           # PFR → permafrost_fraction (annual; AR(2) for 2022–2024 if needed)
-process_wetlands(file_path)             # inund_sat_wetland_frac → wetland_fraction (%), monthly→annual + AR(2)
-process_land_cover(file_path)           # dom_land_cover_class (static, replicate 2010–2024)
-process_elevation(file_path)            # z (geopotential) → elevation (m), static, replicate 2010–2024
-process_industrial_emissions(file_path) # fuel_emi/emissions → ch4_emissions (annual; AR(2) for 2023–2024)
-```
-
-Each wrapper:
-
-* Passes the correct `variable_name`/`output_name`
-* Chooses **aggregation** (mean vs sum)
-* Supplies the **unit conversion** (if any)
-* Applies the **year filter (2010–2024)**
-
----
-
-### **Unit Conversions (used in wrappers)**
-
-```python
-kelvin_to_celsius(temp_k)          # K → °C
-meters_to_millimeters(precip_m)    # m → mm
-geopotential_to_elevation(geo)     # m²/s² → m  (geo / 9.80665)
-fraction_to_percent(x)             # 0–1 → 0–100 (wetlands)
-```
-
----
-
-### **Common Utilities**
-
-```python
-# 1) Coordinate normalization
-fix_longitudes_to_west(lon)  # (lon + 180) % 360 - 180
-
-# 2) Spatial subsetting to Canada (benchmark)
-CANADA_BOUNDS = dict(lat_min=40.0, lat_max=85.0, lon_min=-145.0, lon_max=-50.0)
-subset_canada(ds, bounds=CANADA_BOUNDS)
-
-# 3) Temporal aggregation
-annual_aggregate(da, mode="mean")  # "mean" for t2m/swvl1/wetland/conc; "sum" for tp
-
-# 4) Regrid to benchmark grid
-TARGET_GRID = (np.arange(40.0, 85.1, 0.1), np.arange(-145.0, -49.9, 0.1))
-regrid_to_0p1(da, method="linear")     # continuous fields
-regrid_to_0p1_nearest(da)              # categorical (land cover)
-
-# 5) Year filter
-filter_years(da_or_df, start=2010, end=2024)
-
-# 6) Flatten to ML long table (consistent schema)
-to_long_dataframe(da, var_name)  # -> ['pixel_id','longitude','latitude','year', var_name]
-
-# 7) IO helpers
-save_csv(df, out_name)
-save_netcdf(da, out_nc)
-```
+**Decision:** Wetland fraction was excluded from the unified v1 dataset because its limited spatial footprint forced the strict intersection to \~6.4k pixels. We retain national coverage by excluding wetlands and adding a simple wetness proxy from land cover. A wetlands-enhanced variant will be explored as a follow-up model for wetland-dominant regions.
 
 ---
 
@@ -514,246 +536,6 @@ save_netcdf(da, out_nc)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## Current_1
-
-# **Data Processing - Project Summary**
-*Comprehensive Documentation of Processing Pipeline*
-
----
-
-## **Data processing Overview**
-**Objective**: Process ERA5 climate data for CH₄ prediction ML model
-**Benchmark Requirements**: 
-- 0.1° × 0.1° resolution (~10 km)
-- EPSG:4326 (WGS84 projection)
-- Annual means (2010–2024)
-- Canada boundaries
-- ML-ready CSV format
-
----
-
----
-
-## **Processing Pipeline**
-
-### ** Processing Steps:**
-1. **Load NetCDF** → Examine structure and variables
-2. **Coordinate Conversion** → 0-360° to -180° to 180° longitude
-3. **Canada Subsetting** → 40°N-85°N, 145°W-50°W boundaries
-4. **Temporal Aggregation** → Daily/instantaneous → Annual means
-5. **Spatial Resampling** → Original resolution → 0.1° × 0.1°
-6. **CSV Extraction** → CH₄-compatible format
-7. **Validation** → Data quality checks
-
-### **Key Processing Details:**
-- **Spatial bounds**: 40°N-85°N, 145°W-50°W (Canada)
-- **Target resolution**: 0.1° × 0.1° (benchmark requirement)
-- **Time period**: 2010-2024 (15 years)
-- **Output format**: `['pixel_id', 'longitude', 'latitude', 'year', 'variable']`
-- **Sorting**: Year first, then pixel_id (matches CH₄ format)
-
----
-
-## **Key Code Development**
-
-After successfully preprocessing some of the Downloaded data, using the folowing script,
-Ch4_raw_process.ipynb
-Fuel_Exploitation_emi_raw_ process.ipynb
-land_cover_raw_ process.ipynb
-permafrost_raw_ process.ipynb
-wetland_raw_process.ipynb,
-
-
-the obtained data was fed to era5_processor.py and climate_processor.py modules.
-
-
-### **Reusable Modules**
-
-* `era5_processor.py` – 
-* `climate_processor.py` – 
----
-
-### **Main Functions**
-
-```python
-# Generic (works for ERA5 + non-ERA5 NetCDFs)
-process_climate_timeseries(
-    file_path: str,
-    variable_name: str,
-    output_name: str,
-    unit_conversion=None,     
-    description: str = ""
-) -> pd.DataFrame
-```
-
-
-```python
-# ERA5 convenience variant, same interface, adds ERA5-specific time/coord fixes
-process_era5_timeseries(
-    file_path: str,
-    variable_name: str,
-    output_name: str,
-    unit_conversion=None,
-    description: str = ""
-) -> pd.DataFrame
-```
-
-* Loads a NetCDF, converts longitudes (0–360 → -180–180), **clips to Canada**,
-* **aggregates to annual** (mean or sum—see `agg` below),
-* **resamples to 0.1°**, flattens to ML-ready long table,
-* filters years **2010–2024**, saves `*feature_Name_2010-2024.csv`.
-
-
----
-
-### **Convenience Functions (wrappers used)**
-
-```python
-# ERA5
-process_temperature(file_path)          # t2m → temperature (K→°C, annual mean)
-process_precipitation(file_path)        # tp  → precipitation (m→mm, annual sum)
-process_soil_moisture(file_path)        # swvl1 → soil_moisture (fraction, annual mean)
-
-# Non-ERA5 / other sources
-process_ch4_concentration(file_path)    # tc_ch4 → ch4_concentration (ppm or fraction→ppm)
-process_permafrost(file_path)           # PFR → permafrost_fraction (annual; AR(2) for 2022–2024 if needed)
-process_wetlands(file_path)             # inund_sat_wetland_frac → wetland_fraction (%), monthly→annual + AR(2)
-process_land_cover(file_path)           # dom_land_cover_class (static, replicate 2010–2024)
-process_elevation(file_path)            # z (geopotential) → elevation (m), static, replicate 2010–2024
-process_industrial_emissions(file_path) # fuel_emi/emissions → ch4_emissions (annual; AR(2) for 2023–2024)
-```
-
-Each wrapper:
-
-* Passes the correct `variable_name`/`output_name`
-* Chooses **aggregation** (mean vs sum)
-* Supplies the **unit conversion** (if any)
-* Applies the **year filter (2010–2024)**
-
----
-
-### **Unit Conversions (used in wrappers)**
-
-```python
-kelvin_to_celsius(temp_k)          # K → °C
-meters_to_millimeters(precip_m)    # m → mm
-geopotential_to_elevation(geo)     # m²/s² → m  (geo / 9.80665)
-fraction_to_percent(x)             # 0–1 → 0–100 (wetlands)
-```
-
----
-
-### **Common Utilities**
-
-```python
-# 1) Coordinate normalization
-fix_longitudes_to_west(lon)  # (lon + 180) % 360 - 180
-
-# 2) Spatial subsetting to Canada (benchmark)
-CANADA_BOUNDS = dict(lat_min=40.0, lat_max=85.0, lon_min=-145.0, lon_max=-50.0)
-subset_canada(ds, bounds=CANADA_BOUNDS)
-
-# 3) Temporal aggregation
-annual_aggregate(da, mode="mean")  # "mean" for t2m/swvl1/wetland/conc; "sum" for tp
-
-# 4) Regrid to benchmark grid
-TARGET_GRID = (np.arange(40.0, 85.1, 0.1), np.arange(-145.0, -49.9, 0.1))
-regrid_to_0p1(da, method="linear")     # continuous fields
-regrid_to_0p1_nearest(da)              # categorical (land cover)
-
-# 5) Year filter
-filter_years(da_or_df, start=2010, end=2024)
-
-# 6) Flatten to ML long table (consistent schema)
-to_long_dataframe(da, var_name)  # -> ['pixel_id','longitude','latitude','year', var_name]
-
-# 7) IO helpers
-save_csv(df, out_name)
-save_netcdf(da, out_nc)
-```
-
----
-
-### Forecasting Pipeline (AR(2)) — 2010→2024 (Used in the preprocessing phase of the downloaded raw file: Wetland, Permafrost and Industrial CH₄ Emissions (Fuel Exploit))
-
-### Shared idea
-
-* Use observed **annual** data for 2010–2022.
-* Fit a **lightweight AR(2) persistence** per grid cell and predict **2023 & 2024**:
-
-  $$
-  y_{t+1} = a \cdot y_t + b \cdot y_{t-1}
-  $$
-
-  with default weights **a = 0.7**, **b = 0.3** (tunable).
-* Merge forecasts with history → save **2010–2024** NetCDF.
-* (Downstream) Convert to ML-ready CSV at **0.1°** using the generic processors.
-
-* **Applied to**:
-
-  * **Wetland**: predict **2022–2024**
-  * **Permafrost**: predict **2022–2024**
-  * **Industrial CH₄ Emissions (Fuel Exploit)**: predict **2023–2024**
-* **Not applied to**: temperature, precipitation, soil moisture, **CH₄ concentration** (already had 2010–2024), **land cover**, **elevation**.
-
----
-
-### **Output Naming (consistent across features)**
-
-* **CSV**: `{OutputName}_TimeSeries_2010-2024_ML_READY{suffix}.csv`
-  e.g., `Temperature_TimeSeries_2010-2024_ML_READY.csv`
-
----
-
-### **Notes That Bit Us (and fixes)**
-
-* **Lon/Lat swap** happened once (wetlands CSV).
-  *Fix:* `df.rename(columns={'latitude':'longitude','longitude':'latitude'})` before save.
-* **Exclude 2025** rows when ERA5 export included it.
-  *Fix:* `years = years[(years >= 2010) & (years <= 2024)]`.
-* **Nearest vs Linear**: Use **nearest** for **categorical** (`land_cover_class`), **linear** for continuous fields.
-
----
-
-This captures how your real code is structured and what each function is responsible for. If you want, I can turn this into a **docstring block** inside each module (or into a `docs/` page) so your repo stays self-explanatory.
-
-
-
-
-
-### **Usage Examples:**
-```python
-from era5_processor import process_temperature, process_precipitation
-
-temp_df = process_temperature('data_stream-oper_stepType-instant.nc')
-precip_df = process_precipitation('data_stream-oper_stepType-accum.nc')
-```
 
 ---
 
@@ -815,24 +597,6 @@ precip_df = process_precipitation('data_stream-oper_stepType-accum.nc')
 
 ---
 
-## **File Inventory**
-
-### **Input Files:**
-- `data_stream-oper_stepType-instant.nc` (Temperature)
-- `data_stream-oper_stepType-accum.nc` (Precipitation)  
-- `era5_geopotential_canada.nc` (Elevation)
-
-### **Output Files:**
-- `Temperature_TimeSeries_2010-2024_ML_READY.csv`
-- `Precipitation_TimeSeries_2010-2024_ML_READY.csv`
-- `Elevation_TimeSeries_2010-2024_ML_READY.csv`
-- `era5_processor.py` (Reusable module)
-
-### **GeoTIFF Options:**
-- Function available to convert CSV → GeoTIFF for visualization
-- Individual annual files or multi-band options
-
----
 
 ## **Key Learnings & Best Practices**
 
@@ -844,8 +608,86 @@ precip_df = process_precipitation('data_stream-oper_stepType-accum.nc')
 
 ---
 
-**Status**: 3/5+ features completed and validated ✅  
-**Ready for**: Spatial intersection analysis and feature integration
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Perfect — here’s a **draft subsection** you can drop directly into your README under **Data Harmonization and Preprocessing**. It explains exactly the trade-offs you’re facing, backed by the intersection analysis you ran:
+
+---
+
+## **Data Harmonization Trade-offs**
+
+During preprocessing, each dataset was clipped to Canada’s geographic extent, resampled to a 0.1° grid (EPSG:4326), and aligned in time (annual means, 2010–2024). To integrate them for machine learning, we computed the **spatial intersection of pixel IDs** across all features.
+
+### 📊 Intersection Results
+
+* Most datasets (CH₄ concentration, emissions, elevation, land cover, permafrost, precipitation, soil moisture, temperature) originally contained **hundreds of thousands of pixels**.
+* The **wetlands dataset**, however, contained only **6,415 unique pixels**.
+* When forcing strict intersection across all features, the final dataset shrinks to **6,415 pixels**, meaning only \~1–2% of each dataset’s original spatial coverage is retained.
+
+### ⚖️ Trade-offs
+
+1. **Strict Intersection (Current Method)**
+
+   * ✅ Ensures perfect alignment across all features (no missing values).
+   * ❌ Severely reduces spatial coverage, restricting analysis mostly to wetlands-covered regions.
+   * ❌ May under-represent broader CH₄ emission hotspots outside wetlands.
+
+2. **Relaxed Intersection**
+
+   * ✅ Retains much broader coverage (hundreds of thousands of pixels).
+   * ✅ Better reflects national-scale CH₄ emissions drivers.
+   * ❌ Introduces missing values where wetlands data is unavailable, requiring imputation or careful handling.
+
+3. **Dual Pipeline (Recommended)**
+
+   * Maintain two datasets:
+
+     * **Strict set**: 6,415 perfectly aligned pixels for baseline testing.
+     * **Relaxed set**: Larger harmonized dataset (no wetlands constraint), with wetlands included as an auxiliary variable.
+   * Enables comparison of results under both assumptions, highlighting wetlands’ influence without sacrificing national coverage.
+
+### ✅ Implication for Modeling
+
+For predictive modeling, wetlands remain an important causal driver but should not constrain the entire dataset. The **dual pipeline** approach balances consistency and representativeness, ensuring both robust validation and broader generalization of CH₄ emission hotspot forecasts.
+
+---
+
+Would you like me to also prepare a **diagram (workflow style)** showing the two paths:
+
+* *Strict intersection → 6,415 pixels*
+* *Relaxed alignment → \~400k+ pixels with missing wetlands*
+
+That could make this trade-off much clearer in your README.
+
+
+
+
+
+
+
 
 
 
