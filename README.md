@@ -539,74 +539,22 @@ This meant that the wetlands dataset—being spatially limited—acted as the bo
 
 ---
 
-## **Data Quality Validation**
 
-### **Validation Checks Performed:**
-- ✅ Missing values: 0 across all datasets
-- ✅ Duplicate records: 0 across all datasets  
-- ✅ Coordinate bounds: Within Canada boundaries
-- ✅ Temporal consistency: All years 2010-2024 present
-- ✅ Realistic value ranges: Temperature, precipitation, elevation
-- ✅ Spatial consistency: Pixel counts per year constant
-- ✅ Format compliance: Matches CH₄ target variable structure
 
-### **Final Dataset Statistics:**
-| Feature | Records | Pixels/Year | Range |
-|---------|---------|-------------|-------|
-| Temperature | 6.4M | 427,950 | Realistic °C |
-| Precipitation | 6.4M | 427,950 | mm/year |
-| Elevation | 5.2M | 346,073 | 0-3,048m |
 
----
 
-## **Achievements & Benchmark Compliance**
 
-### **✅ All Benchmark Requirements Met:**
-- **Resolution**: 0.1° × 0.1° (~10 km) ✓
-- **Projection**: EPSG:4326 (WGS84) ✓
-- **Temporal**: Annual means 2010-2024 ✓
-- **Spatial**: Canada boundaries ✓
-- **Format**: ML-ready CSV ✓
 
-### **✅ Processing Efficiency:**
-- **Data reduction**: 8.31 GB → ~50 MB per feature (99.4% reduction)
-- **Resolution improvement**: 0.25° → 0.1° (4x finer spatial detail)
-- **Temporal aggregation**: 5,479 daily → 15 annual (365x reduction)
-- **Quality assurance**: Zero missing/invalid values
 
----
 
-## **Next Steps for ML Pipeline**
 
-### **Remaining Features to Process:**
-1. **CH₄ target variable** (4.8M rows - atmospheric coverage)
-2. **Wetlands data** (1.8M rows - wetland areas only)
-3. **Additional features**: Soil moisture, land cover, permafrost
 
-### **Spatial Coverage Challenge:**
-- **Issue**: Different datasets have different spatial coverage
-- **Solution**: Find common spatial intersection across all features
-- **Expected**: ~1.8M final rows (wetland coverage determines minimum)
 
-### **Final Integration:**
-1. **Spatial intersection analysis** using pixel coordinates
-2. **Feature joining** using `pixel_id` as common key
-3. **Train/test split**: 2010-2019 (train) / 2020-2024 (test)
-4. **ML model training** for CH₄ prediction
-5. **2030 projection** using future climate scenarios
 
----
 
 
-## **Key Learnings & Best Practices**
 
-1. **Annual aggregation first** → Much more memory efficient than spatial resampling daily data
-2. **Reusable functions** → Consistent processing across multiple variables
-3. **Validation at each step** → Catch issues early in pipeline
-4. **CH₄ format matching** → Ensures seamless feature integration
-5. **Benchmark compliance** → Meet all technical requirements upfront
 
----
 
 
 
@@ -633,87 +581,11 @@ This meant that the wetlands dataset—being spatially limited—acted as the bo
 
 
 
-Perfect — here’s a **draft subsection** you can drop directly into your README under **Data Harmonization and Preprocessing**. It explains exactly the trade-offs you’re facing, backed by the intersection analysis you ran:
 
----
 
-## **Data Harmonization Trade-offs**
 
-During preprocessing, each dataset was clipped to Canada’s geographic extent, resampled to a 0.1° grid (EPSG:4326), and aligned in time (annual means, 2010–2024). To integrate them for machine learning, we computed the **spatial intersection of pixel IDs** across all features.
 
-### 📊 Intersection Results
 
-* Most datasets (CH₄ concentration, emissions, elevation, land cover, permafrost, precipitation, soil moisture, temperature) originally contained **hundreds of thousands of pixels**.
-* The **wetlands dataset**, however, contained only **6,415 unique pixels**.
-* When forcing strict intersection across all features, the final dataset shrinks to **6,415 pixels**, meaning only \~1–2% of each dataset’s original spatial coverage is retained.
-
-### ⚖️ Trade-offs
-
-1. **Strict Intersection (Current Method)**
-
-   * ✅ Ensures perfect alignment across all features (no missing values).
-   * ❌ Severely reduces spatial coverage, restricting analysis mostly to wetlands-covered regions.
-   * ❌ May under-represent broader CH₄ emission hotspots outside wetlands.
-
-2. **Relaxed Intersection**
-
-   * ✅ Retains much broader coverage (hundreds of thousands of pixels).
-   * ✅ Better reflects national-scale CH₄ emissions drivers.
-   * ❌ Introduces missing values where wetlands data is unavailable, requiring imputation or careful handling.
-
-3. **Dual Pipeline (Recommended)**
-
-   * Maintain two datasets:
-
-     * **Strict set**: 6,415 perfectly aligned pixels for baseline testing.
-     * **Relaxed set**: Larger harmonized dataset (no wetlands constraint), with wetlands included as an auxiliary variable.
-   * Enables comparison of results under both assumptions, highlighting wetlands’ influence without sacrificing national coverage.
-
-### ✅ Implication for Modeling
-
-For predictive modeling, wetlands remain an important causal driver but should not constrain the entire dataset. The **dual pipeline** approach balances consistency and representativeness, ensuring both robust validation and broader generalization of CH₄ emission hotspot forecasts.
-
----
-
-Would you like me to also prepare a **diagram (workflow style)** showing the two paths:
-
-* *Strict intersection → 6,415 pixels*
-* *Relaxed alignment → \~400k+ pixels with missing wetlands*
-
-That could make this trade-off much clearer in your README.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Modeling Pipeline
-The harmonized dataset is what you then plan to feed into ML models (LSTM, XGBoost, CNNs) to predict methane hotspots by 2030.
-
-AR(2) forecasting filled in missing years (2023–2024) for dynamic features.
-
-Static features (land cover, elevation) were replicated across years.
 
 
 
