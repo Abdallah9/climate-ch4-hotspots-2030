@@ -1,4 +1,4 @@
-# 📄 README Documentation Draft
+#  README Documentation Draft
    
 # climate-ch4-hotspots-2030
 
@@ -16,7 +16,7 @@ The novelty of this research lies in its integration of multiple dimensions:
 * Producing projections up to the year 2030  
 * Linking scientific findings with potential **policy implications** for mitigation and adaptation strategies  
 
-### 📚 Literature Review:
+###  Literature Review:
 
 1. **Global Methane Assessment: 2030 Baseline Report**
 
@@ -42,14 +42,14 @@ The novelty of this research lies in its integration of multiple dimensions:
    * **Key Insight:** Aims at current monitoring rather than future projections or policy analysis.
    * **Reference:** [CH4Net: A Deep Learning Model](https://amt.copernicus.org/articles/17/2583/2024/)
 
-### 🧠 Analysis:
+###  Analysis:
 
 * **Current Research Focus:** Existing studies predominantly concentrate on current methane emissions, detection of super-emitters, and the development of monitoring tools using satellite data.
 * **Gap Identified:** There is a lack of research that combines satellite-based data to project global methane emission hotspots up to 2030 with an emphasis on climate-driven factors and policy implications.
 
 ## **Scope & Limitations**
 
-### 🔭 Scope
+###  Scope
 This project focuses on building a machine learning–based framework for forecasting methane (CH₄) emission hotspots toward 2030. The scope includes:
 - Processing **satellite-derived CH₄ concentration data** (2010–2024)  
 - Integrating **environmental drivers** (temperature, precipitation, soil moisture, permafrost, wetland fraction)  
@@ -57,7 +57,7 @@ This project focuses on building a machine learning–based framework for foreca
 - Generating **annual, Canada-focused ML-ready datasets** at 0.1° × 0.1° resolution  
 - Producing **forecasts up to 2030** using statistical and machine learning models  
 
-### ⚠️ Limitations
+###  Limitations
 While the study provides valuable insights, several constraints must be acknowledged:
 - **Geographic focus**: Initial implementation targets Canada, with possible extension to global scale later.  
 - **Temporal resolution**: Data are aggregated to **annual means**, which may smooth short-term emission spikes.  
@@ -458,7 +458,7 @@ precip_df = process_precipitation('data_stream-oper_stepType-accum.nc')
 
 # **Data Unification**
 
-## **🎯 Goal**
+## ** Goal**
 
 The objective of the unification step was to merge all processed climate features into a single dataset covering **2010–2024**, standardized to:
 
@@ -472,7 +472,7 @@ This unified dataset would serve as the foundation for machine learning models p
 
 ---
 
-## **🛠 What Was Tried**
+## ** What Was Tried**
 
 To guarantee alignment across all features, I first attempted to compute the **strict spatial and temporal intersection**:
 
@@ -484,7 +484,7 @@ This approach was designed to ensure a dataset with **no missing values**.
 
 ---
 
-## **⚠️ What Happened**
+## ** What Happened**
 
 The strict intersection revealed a critical limitation:
 
@@ -504,6 +504,58 @@ This meant that the wetlands dataset—being spatially limited—acted as the bo
 ---
 
 
+## ** Re-running intersection without wetlands**
+
+* Without wetlands, the strict intersection expanded to **128,116 pixels**.
+* Coverage: ~30–37% across main features, with **permafrost** being the limiting dataset.
+* This balanced completeness and representativeness.
+
+---
+
+## **4. Creating the unified dataset**
+
+* Used `ch4_concentration` as the **base structure**.
+* Left-joined other features (`emissions`, `elevation`, `land_cover`, `permafrost_fraction`, `precipitation`, `soil_moisture`, `temperature`).
+* Total records: **1,921,740 (128,116 pixels × 15 years)**.
+* Variables: 12 (7 numerical features, land cover class, categorical names, proxy column, and target).
+
+---
+
+## **5. Adding a wetland proxy**
+
+* Since wetlands were excluded, we created a **binary proxy feature**:
+
+  * `is_wetland_like = 1` if `land_cover_class` ∈ {160, 170, 180, 220}
+  * `0` otherwise.
+* Also mapped `land_cover_class` → `land_cover_name` (human-readable).
+
+---
+
+## **6. Preparing ML-ready format**
+
+* Organized columns:
+
+  1. Identifiers: `pixel_id`, `latitude`, `longitude`, `year`
+  2. Predictors:
+     * Climate: `precipitation`, `soil_moisture`, `temperature`
+     * Physical: `elevation`, `permafrost_fraction`, `is_wetland_like`
+     * Anthropogenic: `ch4_emissions`
+  3. Target: `ch4_concentration` (moved to the end).
+* Exported as:
+
+  * **Main dataset:** `Unified_Climate_Dataset_2010-2024_ML_READY.csv`
+  * **Feature matrix (pixel-level averages):** `Climate_Feature_Matrix_2010-2024_Averaged.csv`
+  * **Summary report:** `Unified_Dataset_Summary_Report.txt`
+
+---
+
+**Final Result:**
+
+* Unified dataset with **128,116 pixels**, **2010–2024 coverage**, and **~2M records**.
+* Complete, ML-ready format with the **target at the end** and grouped features.
+* Wetlands excluded but **wetness captured via a proxy column**.
+
+---
 
 
 
@@ -512,8 +564,150 @@ This meant that the wetlands dataset—being spatially limited—acted as the bo
 
 
 
+#  **Model Development and Optimization**
+
+## **Objective**
+
+The modeling stage aims to forecast methane (CH₄) concentration hotspots across Canada (2010–2030) using a **machine learning–based regression framework**.
+This stage integrates multiple harmonized environmental and industrial predictors to estimate methane concentration trends and identify emerging emission hotspots.
+
+---
+
+## **Model Framework**
+
+### **Algorithm Selection**
+
+The model chosen for this task is **XGBoost (Extreme Gradient Boosting)** — a decision tree–based ensemble method optimized for structured tabular data.
+It was selected due to its:
+
+* Robust performance on non-linear, multivariate relationships
+* Capability to handle missing values and mixed feature types
+* Inherent feature importance interpretability
+* Proven track record in environmental and climate forecasting applications
+
+---
+
+## **Data Preparation**
+
+### **Predictor Features**
+
+All features were harmonized to a **0.1° × 0.1° (≈10 km)** grid, annual resolution (2010–2024), and aligned in **EPSG:4326 (WGS84)** coordinates.
+The modeling dataset included:
+
+| Category                       | Features                                  |
+| ------------------------------ | ----------------------------------------- |
+| **Climate Variables (ERA5)**   | Temperature, Precipitation, Soil Moisture |
+| **Surface & Terrain**          | Elevation                                 |
+| **Cryosphere Variables**       | Permafrost Fraction                       |
+| **Industrial Drivers (EDGAR)** | Fuel Exploitation CH₄ Emissions           |
+| **Land Features**              | Land Cover Class, Wetland-Like Proxy      |
+| **Target Variable**            | Methane (CH₄) Concentration               |
+
+---
+
+### **Feature Engineering**
+
+* `is_wetland_like`: proxy binary indicator to represent wetland presence (since GIEMS data was excluded).
+* `land_cover_class`: encoded as categorical (`int16`) and one-hot encoded within the pipeline.
+* Features grouped and standardized in a preprocessing pipeline using **scikit-learn’s `ColumnTransformer`**.
+
+---
+
+### **Train/Test Split**
+
+To preserve temporal structure, a **time-aware split** was used:
+
+* **Training:** 2010–2021
+* **Testing:** 2022–2024
+
+This ensures evaluation on unseen future years, mimicking real-world forecasting.
+
+---
+
+## **Model Implementation**
+
+### **Pipeline Overview**
+
+Each dataset was passed through the following pipeline:
+
+1. **Preprocessing**
+
+   * Numeric variables: passed directly
+   * Categorical variable (`land_cover_class`): one-hot encoded
+
+2. **Regression Model**
+
+   * `XGBRegressor` from the `xgboost` library
+   * Objective: `"reg:squarederror"`
+   * Evaluation metric: R² (coefficient of determination)
+
+---
+
+### **Hyperparameter Optimization**
+
+A **RandomizedSearchCV** with **TimeSeriesSplit (5 folds)** was applied to fine-tune model parameters.
+This ensured robust temporal cross-validation and avoided data leakage between years.
+
+#### Parameter space explored:
+
+```python
+{
+  "n_estimators": [300, 500, 800, 1000],
+  "max_depth": [6, 8, 10],
+  "learning_rate": [0.01, 0.05, 0.1],
+  "subsample": [0.6, 0.8, 1.0],
+  "colsample_bytree": [0.6, 0.8, 1.0],
+  "min_child_weight": [1, 3, 5],
+  "gamma": [0, 0.1, 0.3],
+  "reg_alpha": [0.0, 0.01, 0.05],
+  "reg_lambda": [1.0, 1.5, 2.0]
+}
+```
+
+---
+
+## **Best Model Configuration**
+
+| Parameter          | Value |
+| ------------------ | ----- |
+| `n_estimators`     | 500   |
+| `max_depth`        | 10    |
+| `learning_rate`    | 0.1   |
+| `subsample`        | 0.6   |
+| `colsample_bytree` | 1.0   |
+| `min_child_weight` | 1     |
+| `gamma`            | 0     |
+| `reg_alpha`        | 0.01  |
+| `reg_lambda`       | 1.5   |
+
+---
+
+## **Model Performance**
+
+| Metric                                | Cross-Validation (5-fold) | Test (2022–2024) |
+| :------------------------------------ | :-----------------------: | :--------------: |
+| **R² (Coefficient of Determination)** |         **0.6007**        |    **0.5868**    |
+| **MAE (Mean Absolute Error)**         |             —             |     0.000278     |
+| **RMSE (Root Mean Squared Error)**    |             —             |     0.000368     |
+
+---
+
+### **Interpretation**
+
+* The model achieved a **CV R² ≈ 0.60**, confirming it captures around **60 % of methane concentration variance** using environmental and industrial predictors.
+* The **test R² ≈ 0.59** indicates strong temporal generalization with minimal overfitting.
+* Small **MAE/RMSE** values suggest precise concentration predictions at fine spatial scales.
+* The tuned hyperparameters favor **robustness over complexity**, balancing interpretability and predictive performance.
+
+---
+
+## **Conclusion**
+
+This optimized XGBoost model represents a **reliable and scalable framework** for methane emission hotspot forecasting.
+It demonstrates that CH₄ concentration across Canada can be effectively modeled using satellite-derived environmental and anthropogenic factors, achieving consistent predictive accuracy across unseen years.
 
 
+---
 
 
 
